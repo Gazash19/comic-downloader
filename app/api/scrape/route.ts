@@ -14,13 +14,15 @@ export async function POST(req: Request) {
 
     let browser;
     if (process.env.NODE_ENV === 'production') {
-      // @ts-ignore
+      // 🚀 INI DIA MANTRA PERBAIKANNYA:
+      const chrom = chromium as any;
       browser = await puppeteerCore.launch({
-        args: chromium.args, defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(), headless: chromium.headless,
+        args: chrom.args, 
+        defaultViewport: chrom.defaultViewport,
+        executablePath: await chrom.executablePath(), 
+        headless: chrom.headless,
       });
     } else {
-      // @ts-ignore
       const puppeteer = require('puppeteer');
       browser = await puppeteer.launch({
         headless: "new",
@@ -32,22 +34,18 @@ export async function POST(req: Request) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // 🚀 BYPASS HENTAIRUN VERSI SUPER AKURAT
     const smartBypassData = await page.evaluate(() => {
       const currentUrl = window.location.href;
       
       if (currentUrl.includes('hentairun.com/gallery/')) {
-        // 1. Ambil teks seluruh halaman, cari angka setelah kata "Pages" (Walau ada enter/spasi)
         const bodyText = document.body.innerText;
         const match = bodyText.match(/Pages:?[\s\n]*(\d+)/i);
         const pages = match ? parseInt(match[1]) : 0;
 
-        // 2. Ambil Cover dari Meta Property (100% Pasti Benar & Tidak akan jadi icon rumah)
         const metaImage = document.querySelector('meta[property="og:image"]');
         const ogImage = metaImage ? metaImage.getAttribute('content') : null;
 
         if (pages > 0 && ogImage) {
-          // 3. Ubah link thumbnail jadi link gambar asli
           let baseUrl = ogImage.replace('t.hentairun', 'i.hentairun')
                                .replace('cover.jpg', '')
                                .replace('cover.png', '')
@@ -57,7 +55,7 @@ export async function POST(req: Request) {
 
           let images = [];
           for (let i = 1; i <= pages; i++) {
-             images.push(baseUrl + i + '.jpg'); // Generate 30 link sekaligus!
+             images.push(baseUrl + i + '.jpg');
           }
 
           return {
@@ -67,7 +65,7 @@ export async function POST(req: Request) {
           };
         }
       }
-      return null; // Kalau bukan link gallery, return null
+      return null;
     });
 
     if (smartBypassData) {
@@ -83,7 +81,6 @@ export async function POST(req: Request) {
        });
     }
 
-    // ⬇️ MODE SCROLL BIASA (Hanya jalan jika link-nya BUKAN /gallery/ ) ⬇️
     await page.evaluate(async () => {
       await new Promise<void>((resolve) => {
         let totalHeight = 0;
