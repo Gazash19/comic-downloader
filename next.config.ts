@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Kosong dan bersih! Tidak perlu konfigurasi aneh-aneh lagi.
+  // Mengunci Vercel untuk Next.js versi terbaru (15+)
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  
+  // Mengunci Vercel untuk Next.js versi sebelumnya (14)
+  experimental: {
+    serverComponentsExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  },
 };
 
 export default nextConfig;
