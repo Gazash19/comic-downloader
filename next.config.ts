@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Memberitahu Vercel untuk tidak mengompres package robot
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // Ini adalah perintah paksa (experimental) agar Vercel
+  // SAMA SEKALI TIDAK menyentuh atau memeras robot kita
+  experimental: {
+    serverComponentsExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  },
 };
 
 export default nextConfig;
