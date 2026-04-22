@@ -49,7 +49,7 @@ export default function Home() {
       const folder = zip.folder(safeTitle);
       
       let count = 0;
-      const batchSize = 3; // SISTEM ANTREAN: Download 3 gambar sekaligus, bukan semuanya!
+      const batchSize = 30; // SISTEM ANTREAN: Download 3 gambar sekaligus, bukan semuanya!
 
       for (let i = 0; i < result.images.length; i += batchSize) {
         const batch = result.images.slice(i, i + batchSize);
