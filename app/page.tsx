@@ -31,7 +31,6 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Gagal mengambil data.');
       
-      // Estimasi ukuran file (rata-rata 700KB per gambar)
       setResult({ ...data.data, fileSize: "~" + (data.data.totalPages * 0.7).toFixed(1) + " MB" });
       setStatus('result');
     } catch (err) {
@@ -48,25 +47,32 @@ export default function Home() {
       const zip = new JSZip();
       const safeTitle = result.title.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'Comic';
       const folder = zip.folder(safeTitle);
+      
       let count = 0;
+      const batchSize = 3; // SISTEM ANTREAN: Download 3 gambar sekaligus, bukan semuanya!
 
-      // Download secara paralel agar super cepat
-      const tasks = result.images.map(async (imgUrl: string, i: number) => {
-        try {
-          const res = await fetch(`/api/proxy?imageUrl=${encodeURIComponent(imgUrl)}`);
-          if (!res.ok) throw new Error();
-          const blob = await res.blob();
-          const ext = imgUrl.split('.').pop()?.split('?')[0] || 'jpg';
-          folder?.file(`${String(i + 1).padStart(3, '0')}.${ext}`, blob);
-        } catch (e) {
-          console.error(`Gagal download gambar ke-${i + 1}`);
-        } finally {
-          count++;
-          setProgress(Math.round((count / result.images.length) * 100));
-        }
-      });
+      for (let i = 0; i < result.images.length; i += batchSize) {
+        const batch = result.images.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (imgUrl: string, index: number) => {
+          const actualIndex = i + index;
+          try {
+            const res = await fetch(`/api/proxy?imageUrl=${encodeURIComponent(imgUrl)}`);
+            if (!res.ok) throw new Error();
+            const blob = await res.blob();
+            const ext = imgUrl.split('.').pop()?.split('?')[0] || 'jpg';
+            folder?.file(`${String(actualIndex + 1).padStart(3, '0')}.${ext}`, blob);
+          } catch (e) {
+            console.error(`Gagal download gambar ke-${actualIndex + 1}`);
+          } finally {
+            count++;
+          }
+        }));
+        
+        // Update progress bar setiap selesai 1 antrean
+        setProgress(Math.round((count / result.images.length) * 100));
+      }
 
-      await Promise.all(tasks);
       const content = await zip.generateAsync({ type: "blob" });
       saveAs(content, `${safeTitle}.zip`);
       setStatus('success');
@@ -123,7 +129,7 @@ export default function Home() {
               
               {status === 'result' && (
                 <button onClick={handleDownload} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20">
-                  <Download /> Download ZIP SEKARANG
+                  <Download /> Download ZIP
                 </button>
               )}
               

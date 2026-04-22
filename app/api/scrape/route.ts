@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server';
+import puppeteerCore from 'puppeteer-core'; 
+// @ts-ignore
+import chromium from '@sparticuz/chromium';
+
+export const maxDuration = 60; 
 
 export async function POST(req: Request) {
   try {
@@ -7,7 +12,6 @@ export async function POST(req: Request) {
 
     if (!url) return NextResponse.json({ error: 'URL/Kode kosong!' }, { status: 400 });
 
-    // 🚀 LOGIKA AUTO-CONVERT URL & KODE ANGKA
     url = url.trim();
     if (/^\d+$/.test(url)) {
       url = `https://hentairun.com/gallery/${url}/`;
@@ -16,45 +20,72 @@ export async function POST(req: Request) {
       if (match) url = `https://hentairun.com/gallery/${match[1]}/`;
     }
 
-    // 🚀 JURUS NINJA: Ambil HTML langsung (Sangat Cepat, Anti-Timeout Vercel)
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html'
-      },
-      cache: 'no-store' 
-    });
-
-    if (!res.ok) throw new Error(`Gagal membaca web (Status: ${res.status}).`);
-
-    const html = await res.text(); 
-
-    // Ekstrak Data menggunakan Regex
-    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
-    const coverUrl = ogImageMatch ? ogImageMatch[1] : null;
-
-    const pagesMatch = html.match(/Pages:[^>]*>(\d+)/i) || html.match(/Pages:\s*(\d+)/i) || html.match(/(\d+)[\s]*pages/i);
-    const totalPages = pagesMatch ? parseInt(pagesMatch[1]) : 0;
-
-    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].replace(' - HentaiRun', '').trim() : 'Unknown Title';
-
-    // Rakit Link Gambar
-    if (coverUrl && totalPages > 0) {
-        let baseUrl = coverUrl.replace('t.hentairun', 'i.hentairun').replace(/cover\.(jpg|png|webp)/, '');
-        if (!baseUrl.endsWith('/')) baseUrl = baseUrl.split('/').slice(0, -1).join('/') + '/';
-        
-        let images = [];
-        for (let i = 1; i <= totalPages; i++) images.push(baseUrl + i + '.jpg');
-
-        return NextResponse.json({
-            success: true,
-            data: { title, totalPages, images, coverUrl }
-        });
+    let browser;
+    if (process.env.NODE_ENV === 'production') {
+      const chrom = chromium as any;
+      browser = await puppeteerCore.launch({
+        args: chrom.args, 
+        defaultViewport: chrom.defaultViewport,
+        executablePath: await chrom.executablePath(), 
+        headless: chrom.headless,
+      });
+    } else {
+      const puppeteer = require('puppeteer');
+      browser = await puppeteer.launch({
+        headless: "new",
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'], 
+      });
     }
 
-    return NextResponse.json({ success: false, error: 'Data tidak ditemukan. Format web tidak sesuai.' }, { status: 400 });
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
+    const smartData = await page.evaluate(() => {
+      if (window.location.href.includes('hentairun.com/gallery/')) {
+        const bodyText = document.body.innerText;
+        const match = bodyText.match(/Pages:?[\s\n]*(\d+)/i);
+        const pages = match ? parseInt(match[1]) : 0;
+        const metaImg = document.querySelector('meta[property="og:image"]');
+        const ogImage = metaImg ? metaImg.getAttribute('content') : null;
+
+        if (pages > 0 && ogImage) {
+          let baseUrl = ogImage.replace('t.hentairun', 'i.hentairun').replace(/cover\.(jpg|png|webp)/, '');
+          if (!baseUrl.endsWith('/')) baseUrl = baseUrl.split('/').slice(0, -1).join('/') + '/';
+          let imgs = [];
+          for (let i = 1; i <= pages; i++) imgs.push(baseUrl + i + '.jpg');
+          return { title: document.title.replace(' - HentaiRun', '').trim(), images: imgs, coverUrl: ogImage };
+        }
+      }
+      return null;
+    });
+
+    if (smartData) {
+       await browser.close();
+       return NextResponse.json({ success: true, data: { ...smartData, totalPages: smartData.images.length } });
+    }
+
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve) => {
+        let totalH = 0;
+        const timer = setInterval(() => {
+          window.scrollBy(0, 300);
+          totalH += 300;
+          if (totalH >= document.body.scrollHeight) { clearInterval(timer); resolve(); }
+        }, 150);
+      });
+    });
+    
+    await new Promise(r => setTimeout(r, 2000));
+    const imageUrls = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('img'))
+        .map(img => img.getAttribute('data-src') || img.src)
+        .filter(src => src?.startsWith('http') && !src.includes('logo'));
+    });
+    const title = await page.title();
+    await browser.close();
+    
+    return NextResponse.json({ success: true, data: { title: title || 'Comic', images: [...new Set(imageUrls)], totalPages: [...new Set(imageUrls)].length, coverUrl: imageUrls[0] }});
   } catch (error) {
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
